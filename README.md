@@ -7,21 +7,31 @@ Datenverarbeitung.
 ## Aktueller Stand
 
 - Discord-Bot, der erfasst, wer wie lange in welchem Voice-Channel war
-- Speicherung in SQLite
+- Persistente Speicherung in PostgreSQL (läuft lokal via Docker)
+- Archivierungslogik für alte Sessions, inklusive Gesamtzeit und Überschneidungsauswertung pro User
 
 ## Geplante Erweiterungen
 
-- Migration zu PostgreSQL
-- REST-API mit FastAPI (JWT-abgesichert)
+- REST-API mit FastAPI (JWT abgesichert)
 - Asynchrone Verarbeitung über Message Queue + Worker
-- Dockerisiertes Deployment
+- Dockerisiertes Deployment (Bot, API, Worker, DB gemeinsam)
 
 ## Setup
 
+Voraussetzungen: Python 3.14, Docker Desktop
 ```bash
+docker run --name discord-postgres -e POSTGRES_PASSWORD=devpassword -e POSTGRES_DB=discord_tracker -p 5432:5432 -d postgres
+
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+
 cd bot
-pip install -r requirements.txt 
 python bot.py
 ```
 
-Erfordert eine `.env`-Datei mit `DISCORD_TOKEN=dein_token`.
+Kopiere `.env.example` zu `.env` und trage deine eigenen Werte ein (Discord-Token, DB-Zugangsdaten).
+
+
+
+
