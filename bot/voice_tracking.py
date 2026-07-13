@@ -1,5 +1,4 @@
 import time
-from database import get_connection
 from database import get_connection, get_open_sessions
 
 def start_session(guild_id, user_id, channel_id):
@@ -7,9 +6,10 @@ def start_session(guild_id, user_id, channel_id):
     cursor = conn.cursor()
     cursor.execute("""
         INSERT INTO voice_sessions (guild_id, user_id, channel_id, join_at)
-        VALUES (?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s)
     """, (str(guild_id), str(user_id), str(channel_id), int(time.time())))
     conn.commit()
+    cursor.close()
     conn.close()
 
 def end_open_session(user_id):
@@ -17,7 +17,7 @@ def end_open_session(user_id):
     cursor = conn.cursor()
     cursor.execute("""
         SELECT id FROM voice_sessions
-        WHERE user_id = ? AND leave_at IS NULL
+        WHERE user_id = %s AND leave_at IS NULL
         ORDER BY id DESC LIMIT 1
     """, (str(user_id),))
     row = cursor.fetchone()
@@ -25,24 +25,25 @@ def end_open_session(user_id):
     if row is not None:
         cursor.execute("""
             UPDATE voice_sessions
-            SET leave_at = ?
-            WHERE id = ?
+            SET leave_at = %s
+            WHERE id = %s
         """, (int(time.time()), row["id"]))
         conn.commit()
-        conn.close()
+
+    cursor.close()
+    conn.close()
 
 def close_session_by_id(session_id, leave_at):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("""
         UPDATE voice_sessions
-        SET leave_at = ?
-        WHERE id = ?
+        SET leave_at = %s
+        WHERE id = %s
     """, (leave_at, session_id))
     conn.commit()
-    conn.close()        
-
-import time
+    cursor.close()
+    conn.close()
 
 def reconcile_sessions(guild):
     now = int(time.time())
@@ -64,15 +65,12 @@ def reconcile_sessions(guild):
         actual_channel = currently_connected.get(user_id)
 
         if actual_channel is None:
-            # Alte Session am Neustart-Zeitpunkt abschließen wenn User weg ist
+            # Alte Session am Neustart-Zeitpunkt abschließen, wenn User weg ist
             close_session_by_id(session["id"], now)
         elif actual_channel != db_channel:
-           
             close_session_by_id(session["id"], now)
             start_session(guild.id, user_id, actual_channel)
 
     for user_id, channel_id in currently_connected.items():
         if user_id not in handled_users:
-            start_session(guild.id, user_id, channel_id)    
-
-    
+            start_session(guild.id, user_id, channel_id)

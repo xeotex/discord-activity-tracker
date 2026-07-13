@@ -12,11 +12,12 @@ def archive_old_sessions():
     cursor.execute("""
         SELECT id, guild_id, user_id, channel_id, join_at, leave_at
         FROM voice_sessions
-        WHERE leave_at IS NOT NULL AND leave_at < ?
+        WHERE leave_at IS NOT NULL AND leave_at < %s
     """, (cutoff,))
     old_sessions = cursor.fetchall()
 
     if not old_sessions:
+        cursor.close()
         conn.close()
         return 0
 
@@ -36,20 +37,20 @@ def archive_old_sessions():
     for (guild_id, user_id), seconds in user_totals.items():
         cursor.execute("""
             INSERT INTO archived_totals (guild_id, user_id, total_seconds)
-            VALUES (?, ?, ?)
-            ON CONFLICT(guild_id, user_id)
-            DO UPDATE SET total_seconds = total_seconds + excluded.total_seconds
+            VALUES (%s, %s, %s)
+            ON CONFLICT (guild_id, user_id)
+            DO UPDATE SET total_seconds = archived_totals.total_seconds + EXCLUDED.total_seconds
         """, (guild_id, user_id, seconds))
 
     for (guild_id, user_id, channel_id), seconds in channel_totals.items():
         cursor.execute("""
             INSERT INTO archived_channel_totals (guild_id, user_id, channel_id, total_seconds)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(guild_id, user_id, channel_id)
-            DO UPDATE SET total_seconds = total_seconds + excluded.total_seconds
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (guild_id, user_id, channel_id)
+            DO UPDATE SET total_seconds = archived_channel_totals.total_seconds + EXCLUDED.total_seconds
         """, (guild_id, user_id, channel_id, seconds))
 
-    # Berechnung von Überschneidungen zwischen den zu archivierenden Sessions 
+    # Berechnung von Überschneidungen zwischen den zu archivierenden Sessions
     overlap_totals = {}
     sessions_list = list(old_sessions)
 
@@ -74,14 +75,15 @@ def archive_old_sessions():
     for (guild_id, user_id, other_user_id), seconds in overlap_totals.items():
         cursor.execute("""
             INSERT INTO archived_overlap_totals (guild_id, user_id, other_user_id, total_seconds)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(guild_id, user_id, other_user_id)
-            DO UPDATE SET total_seconds = total_seconds + excluded.total_seconds
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (guild_id, user_id, other_user_id)
+            DO UPDATE SET total_seconds = archived_overlap_totals.total_seconds + EXCLUDED.total_seconds
         """, (guild_id, user_id, other_user_id, seconds))
 
     ids = [s["id"] for s in old_sessions]
-    cursor.executemany("DELETE FROM voice_sessions WHERE id = ?", [(i,) for i in ids])
+    cursor.executemany("DELETE FROM voice_sessions WHERE id = %s", [(i,) for i in ids])
 
     conn.commit()
+    cursor.close()
     conn.close()
     return len(old_sessions)

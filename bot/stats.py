@@ -9,7 +9,7 @@ def get_total_seconds(user_id):
     # Archivierte Gesamtzeit zusammengefasst (Sessions > 31 Tage)
     cursor.execute("""
         SELECT total_seconds FROM archived_totals
-        WHERE user_id = ?
+        WHERE user_id = %s
     """, (str(user_id),))
     archived_row = cursor.fetchone()
     archived_total = archived_row["total_seconds"] if archived_row is not None else 0
@@ -18,21 +18,22 @@ def get_total_seconds(user_id):
     cursor.execute("""
         SELECT SUM(leave_at - join_at) AS total
         FROM voice_sessions
-        WHERE user_id = ? AND leave_at IS NOT NULL
+        WHERE user_id = %s AND leave_at IS NOT NULL
     """, (str(user_id),))
     row = cursor.fetchone()
     live_total = row["total"] if row["total"] is not None else 0
 
-    # Berechnen von möglicher Session
+    # Berechnen von möglicher offener Session
     cursor.execute("""
         SELECT join_at FROM voice_sessions
-        WHERE user_id = ? AND leave_at IS NULL
+        WHERE user_id = %s AND leave_at IS NULL
         ORDER BY id DESC LIMIT 1
     """, (str(user_id),))
     open_row = cursor.fetchone()
     if open_row is not None:
         live_total += int(time.time()) - open_row["join_at"]
 
+    cursor.close()
     conn.close()
     return archived_total + live_total
 
@@ -49,11 +50,12 @@ def get_total_seconds_since(user_id, since_timestamp):
 
     cursor.execute("""
         SELECT join_at, leave_at FROM voice_sessions
-        WHERE user_id = ?
-        AND (leave_at IS NULL OR leave_at > ?)
+        WHERE user_id = %s
+        AND (leave_at IS NULL OR leave_at > %s)
     """, (str(user_id), since_timestamp))
 
     rows = cursor.fetchall()
+    cursor.close()
     conn.close()
 
     total = 0
@@ -86,7 +88,7 @@ def get_channel_leaderboard(channel_id, since_timestamp=None):
     if since_timestamp is None:
         cursor.execute("""
             SELECT user_id, total_seconds FROM archived_channel_totals
-            WHERE channel_id = ?
+            WHERE channel_id = %s
         """, (str(channel_id),))
         for row in cursor.fetchall():
             totals[row["user_id"]] = totals.get(row["user_id"], 0) + row["total_seconds"]
@@ -94,11 +96,12 @@ def get_channel_leaderboard(channel_id, since_timestamp=None):
 
     cursor.execute("""
         SELECT user_id, join_at, leave_at FROM voice_sessions
-        WHERE channel_id = ?
-        AND (leave_at IS NULL OR leave_at > ?)
+        WHERE channel_id = %s
+        AND (leave_at IS NULL OR leave_at > %s)
     """, (str(channel_id), since_timestamp))
 
     rows = cursor.fetchall()
+    cursor.close()
     conn.close()
 
     for row in rows:
@@ -121,7 +124,7 @@ def get_overlap_leaderboard(user_id, since_timestamp=None):
     if since_timestamp is None:
         cursor.execute("""
             SELECT other_user_id, total_seconds FROM archived_overlap_totals
-            WHERE user_id = ?
+            WHERE user_id = %s
         """, (str(user_id),))
         for row in cursor.fetchall():
             totals[row["other_user_id"]] = totals.get(row["other_user_id"], 0) + row["total_seconds"]
@@ -129,8 +132,8 @@ def get_overlap_leaderboard(user_id, since_timestamp=None):
 
     cursor.execute("""
         SELECT channel_id, join_at, leave_at FROM voice_sessions
-        WHERE user_id = ?
-        AND (leave_at IS NULL OR leave_at > ?)
+        WHERE user_id = %s
+        AND (leave_at IS NULL OR leave_at > %s)
     """, (str(user_id), since_timestamp))
     my_sessions = cursor.fetchall()
 
@@ -140,10 +143,10 @@ def get_overlap_leaderboard(user_id, since_timestamp=None):
 
         cursor.execute("""
             SELECT user_id, join_at, leave_at FROM voice_sessions
-            WHERE channel_id = ?
-            AND user_id != ?
-            AND (leave_at IS NULL OR leave_at > ?)
-            AND join_at < ?
+            WHERE channel_id = %s
+            AND user_id != %s
+            AND (leave_at IS NULL OR leave_at > %s)
+            AND join_at < %s
         """, (my_session["channel_id"], str(user_id), my_start, my_end))
 
         others = cursor.fetchall()
@@ -160,6 +163,7 @@ def get_overlap_leaderboard(user_id, since_timestamp=None):
                 other_id = other["user_id"]
                 totals[other_id] = totals.get(other_id, 0) + overlap_seconds
 
+    cursor.close()
     conn.close()
     return sorted(totals.items(), key=lambda item: item[1], reverse=True)
 
@@ -173,7 +177,7 @@ def get_server_leaderboard(guild_id, since_timestamp=None):
     if since_timestamp is None:
         cursor.execute("""
             SELECT user_id, total_seconds FROM archived_totals
-            WHERE guild_id = ?
+            WHERE guild_id = %s
         """, (str(guild_id),))
         for row in cursor.fetchall():
             totals[row["user_id"]] = totals.get(row["user_id"], 0) + row["total_seconds"]
@@ -181,11 +185,12 @@ def get_server_leaderboard(guild_id, since_timestamp=None):
 
     cursor.execute("""
         SELECT user_id, join_at, leave_at FROM voice_sessions
-        WHERE guild_id = ?
-        AND (leave_at IS NULL OR leave_at > ?)
+        WHERE guild_id = %s
+        AND (leave_at IS NULL OR leave_at > %s)
     """, (str(guild_id), since_timestamp))
 
     rows = cursor.fetchall()
+    cursor.close()
     conn.close()
 
     for row in rows:
